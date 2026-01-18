@@ -10,6 +10,9 @@ import SwiftData
 
 @main
 struct WeeklyWorkoutsApp: App {
+
+    @StateObject private var healthKitManager = HealthKitManager()
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
@@ -26,6 +29,7 @@ struct WeeklyWorkoutsApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environmentObject(healthKitManager)
         }
         .modelContainer(sharedModelContainer)
     }

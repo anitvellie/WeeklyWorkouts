@@ -5,57 +5,80 @@
 //  Created by Alevtina Anishchenko on 18/01/2026.
 //
 
+import HealthKit
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @EnvironmentObject private var healthKitManager: HealthKitManager
+
+    @State private var errorMessage: String?
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+        NavigationStack {
+            Group {
+                if let errorMessage {
+                    VStack(spacing: 12) {
+                        Text("Health Access Issue")
+                            .font(.headline)
+                        Text(errorMessage)
+                            .foregroundStyle(.secondary)
+                        Button("Try Again") {
+                            Task { await authorizeAndLoad() }
+                        }
+                    }
+                    .padding()
+                } else if healthKitManager.workouts.isEmpty {
+                    ContentUnavailableView(
+                        "No Workouts Yet",
+                        systemImage: "figure.run",
+                        description: Text("Workouts from this week will appear here.")
+                    )
+                } else {
+                    List(healthKitManager.workouts, id: \.uuid) { workout in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(activityName(for: workout.workoutActivityType))
+                                .font(.headline)
+                            Text("\(formattedDate(workout.startDate)) • \(formattedDuration(workout.duration))")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
-                .onDelete(perform: deleteItems)
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
+            .navigationTitle("This Week")
+        }
+        .task {
+            await authorizeAndLoad()
         }
     }
 
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+    private func authorizeAndLoad() async {
+        do {
+            try await healthKitManager.requestAuthorization()
+            try await healthKitManager.refreshThisWeeksWorkouts()
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
-        }
+    private func activityName(for type: HKWorkoutActivityType) -> String {
+        // A simple, developer-facing label
+        String(describing: type)
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
+    }
+
+    private func formattedDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration / 60)
+        let seconds = Int(duration) % 60
+        return String(format: "%dm %02ds", minutes, seconds)
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .environmentObject(HealthKitManager())
 }
